@@ -76,10 +76,10 @@ __global__ void mykernel(char* buffer, int width, int height, size_t pitch, int 
     iteration++;
   }
 
-  uint8_t grayv = (uint8_t)((255 * iteration) / n_iterations);
-
+  float grey = (float)iteration / (float)n_iterations;
+  uchar4 color = heat_lut(grey);
   uchar4* lineptr = (uchar4*)(buffer + y * pitch);
-  lineptr[x] = make_uchar4(grayv, grayv, grayv, 255);
+  lineptr[x] = color;
 }
 
 void render(char* hostBuffer, int width, int height, std::ptrdiff_t stride, int n_iterations) {
