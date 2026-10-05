@@ -145,7 +145,20 @@ __global__ void compute_LUT(const char* buffer, int width, int height, size_t pi
 /// \param pitch Size of a line in bytes
 /// \param max_iter Maximum number of iterations
 __global__ void apply_LUT(char* buffer, int width, int height, size_t pitch, int max_iter, const uchar4* LUT) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
 
+    if (x >= width || y >= height || x < 0 || y < 0)
+    {
+        return;
+    }
+
+    uint32_t*  lineptr = (uint32_t*)(buffer + y * pitch);
+    int k = lineptr[x];
+
+    uchar4 color = LUT[k];
+    uchar4* lineptr_out = (uchar4*)(buffer + y * pitch);
+    lineptr_out[x] = color;
 }
 
 // Device code
