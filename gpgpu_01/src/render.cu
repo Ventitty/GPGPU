@@ -55,59 +55,46 @@ rgba8_t heat_lut(float x)
 }
 
 // Device code
-__global__ void mykernel(char* buffer, int width, int height, size_t pitch)
+__global__ void mykernel(char* buffer, int width, int height, size_t pitch, uchar4* LUT)
 {
-  float denum = width * width + height * height;
-
   int x = blockDim.x * blockIdx.x + threadIdx.x;
   int y = blockDim.y * blockIdx.y + threadIdx.y;
 
   if (x >= width || y >= height)
     return;
 
-  uchar4*  lineptr = (uchar4*)(buffer + y * pitch);
-  float    v       = (x * x + y * y) / denum;
-  uint8_t  grayv   = v * 255;
+  float mx0 = -2.5f + ((float)x / (float)width) * 3.5f;
+  float my0 = -1.0f + ((float)y / (float)height) * 2.0f;
 
+  float mx = 0.0f;
+  float my = 0.0f;
+  int iteration = 0;
 
-  lineptr[x] = {grayv, grayv, grayv, 255};
+  while ((mx * mx + my * my < 4.0f) && (iteration < n_iterations)) {
+    float mxtemp = mx * mx - my * my + mx0;
+    my = 2.0f * mx * my + my0;
+    mx = mxtemp;
+    iteration++;
+  }
+
+  uint8_t grayv = (uint8_t)((255 * iteration) / n_iterations);
+  uchar4* lineptr = (uchar4*)(buffer + y * pitch);
+  lineptr[x] = make_uchar4(grayv, grayv, grayv, 255);
 }
 
 void render(char* hostBuffer, int width, int height, std::ptrdiff_t stride, int n_iterations)
 {
-  cudaError_t rc = cudaSuccess;
+  char* devBuffer = nullptr;
+  size_t pitch = 0;
 
-  // Allocate device memory
-  char*  devBuffer;
-  size_t pitch;
+  cudaMallocPitch(&devBuffer, &pitch, width * sizeof(uchar4), height);
 
-  rc = cudaMallocPitch(&devBuffer, &pitch, width * sizeof(rgba8_t), height);
-  if (rc)
-    abortError("Fail buffer allocation");
+  int bsize = 32;
+  dim3 dimBlock(bsize, bsize);
+  dim3 dimGrid((width + bsize - 1) / bsize, (height + bsize - 1) / bsize);
 
-  // Run the kernel with blocks of size 64 x 64
-  {
-    int bsize = 32;
-    int w     = std::ceil((float)width / bsize);
-    int h     = std::ceil((float)height / bsize);
-
-    spdlog::debug("running kernel of size ({},{})", w, h);
-
-    dim3 dimBlock(bsize, bsize);
-    dim3 dimGrid(w, h);
-    mykernel<<<dimGrid, dimBlock>>>(devBuffer, width, height, pitch);
-
-    if (cudaPeekAtLastError())
-      abortError("Computation Error");
-  }
-
-  // Copy back to main memory
-  rc = cudaMemcpy2D(hostBuffer, stride, devBuffer, pitch, width * sizeof(rgba8_t), height, cudaMemcpyDeviceToHost);
-  if (rc)
-    abortError("Unable to copy buffer back to memory");
-
-  // Free
-  rc = cudaFree(devBuffer);
-  if (rc)
-    abortError("Unable to free memory");
+  mykernel<<<dimGrid, dimBlock>>>(devBuffer, width, height, pitch, n_iterations);
+  cudaDeviceSynchronize();
+  cudaMemcpy2D(hostBuffer, stride, devBuffer, pitch, width * sizeof(uchar4), height, cudaMemcpyDeviceToHost);
+  cudaFree(devBuffer);
 }
