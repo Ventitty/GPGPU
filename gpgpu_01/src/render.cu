@@ -21,7 +21,7 @@ struct rgba8_t {
   std::uint8_t a;
 };
 
-rgba8_t heat_lut(float x)
+__device__ rgba8_t heat_lut(float x)
 {
   assert(0 <= x && x <= 1);
   float x0 = 1.f / 4.f;
