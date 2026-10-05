@@ -55,8 +55,7 @@ rgba8_t heat_lut(float x)
 }
 
 // Device code
-__global__ void mykernel(char* buffer, int width, int height, size_t pitch, uchar4* LUT)
-{
+__global__ void mykernel(char* buffer, int width, int height, size_t pitch, int n_iterations) {
   int x = blockDim.x * blockIdx.x + threadIdx.x;
   int y = blockDim.y * blockIdx.y + threadIdx.y;
 
@@ -78,12 +77,12 @@ __global__ void mykernel(char* buffer, int width, int height, size_t pitch, ucha
   }
 
   uint8_t grayv = (uint8_t)((255 * iteration) / n_iterations);
+
   uchar4* lineptr = (uchar4*)(buffer + y * pitch);
   lineptr[x] = make_uchar4(grayv, grayv, grayv, 255);
 }
 
-void render(char* hostBuffer, int width, int height, std::ptrdiff_t stride, int n_iterations)
-{
+void render(char* hostBuffer, int width, int height, std::ptrdiff_t stride, int n_iterations) {
   char* devBuffer = nullptr;
   size_t pitch = 0;
 
