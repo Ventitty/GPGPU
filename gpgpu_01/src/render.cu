@@ -54,6 +54,100 @@ __device__ rgba8_t heat_lut(float x)
   }
 }
 
+/// Compute the number or iteration of the fractal per pixel and store the result in *buffer*.
+/// Note that a 32-bits location can be used to store an integer (int32) or a color (uchar4).
+///
+/// \param buffer Input buffer of type (uchar4 or uint32_t)
+/// \param width Width of the image
+/// \param height Height of the image
+/// \param pitch Size of a line in bytes
+/// \param max_iter Maximum number of iterations
+__global__ void compute_iter(char* buffer, int width, int height, size_t pitch, int max_iter) {
+    int x = blockDim.x * blockIdx.x + threadIdx.x;
+    int y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (x >= width || y >= height || x < 0 || y < 0)
+    {
+        return;
+    }
+
+    float w = (float)width / 3.5;
+    float h = (float)height / 2;
+    float mx0 = ((float)x/w) - 2.5;
+    float my0 = ((float)y/h) - 1;
+    float mx = 0.0;
+    float my = 0.0;
+    int iteration = 0;
+
+    while(mx*mx + my*my < 4 && iteration < max_iter)
+    {
+        float mxtemp = mx*mx - my*my + mx0;
+        my = 2*mx*my + my0;
+        mx = mxtemp;
+        iteration++;
+    }
+
+    uint32_t* lineptr = (uint32_t*)(buffer + y * pitch);
+    lineptr[x] = iteration;
+}
+
+/// This function is single thread for now!
+///
+/// \param buffer Input buffer of type (uchar4 or uint32_t)
+/// \param width Width of the image
+/// \param height Height of the image
+/// \param pitch Size of a line in bytes
+/// \param max_iter Maximum number of iterations
+/// \param LUT Output look-up table
+__global__ void compute_LUT(const char* buffer, int width, int height, size_t pitch, int max_iter, uchar4* LUT) {
+    if (blockIdx.x != 0 || threadIdx.x != 0 || blockIdx.y != 0 || threadIdx.y != 0)
+    {
+        return;
+    }
+
+    uint32_t* histo = (uint32_t*)LUT;
+    for(int y = 0; y < height; y++)
+    {
+        uint32_t*  lineptr = (uint32_t*)(buffer + y * pitch);
+        for(int x = 0; x < width; x++)
+        {
+            int k = lineptr[x];
+            if (k <= max_iter)
+                histo[k]++;
+        }
+    }
+
+    int iteration = 0;
+    uint32_t total = 0.0;
+    for (int i = 0; i < max_iter; i++)
+        total += histo[i];
+
+    for (int k = 0; k <= max_iter; k++)
+    {
+        if (k == max_iter)
+            LUT[k] = {0, 0, 0, 255};
+        else
+        {
+            uint32_t count = histo[k];
+            iteration += count;
+
+            float x = total > 0 ? ((float)iteration / (float)total) : 0.0;
+            rgba8_t color = heat_lut(x);
+            LUT[k] = color;
+        }
+    }
+}
+
+///
+/// \param buffer Input buffer of type (uchar4 or uint32_t)
+/// \param width Width of the image
+/// \param height Height of the image
+/// \param pitch Size of a line in bytes
+/// \param max_iter Maximum number of iterations
+__global__ void apply_LUT(char* buffer, int width, int height, size_t pitch, int max_iter, const uchar4* LUT) {
+
+}
+
 // Device code
 __global__ void mykernel(char* buffer, int width, int height, size_t pitch, int n_iterations) {
   int x = blockDim.x * blockIdx.x + threadIdx.x;
